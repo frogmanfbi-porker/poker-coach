@@ -36,7 +36,7 @@ my_tools = [calculate_pot_odds]
 # モデルの準備
 # 画像認識とFunction Callingを両立できる "gemini-1.5-pro" を使用
 model = genai.GenerativeModel(
-    "gemini-1.5-pro",
+"gemini-1.5-flash",
     tools=my_tools
 )
 
@@ -124,4 +124,5 @@ if submitted:
                         st.write(f"📩 **ツール結果:** `{resp.name}`")
 
         except Exception as e:
+
             st.error(f"エラーが発生しました: {e}")
