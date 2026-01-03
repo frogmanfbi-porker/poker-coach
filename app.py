@@ -1,10 +1,10 @@
 import streamlit as st
 import google.generativeai as genai
-import os
 from PIL import Image
+import os
 
-# --- 1. 設定部分 ---
-st.set_page_config(page_title="Gemini Poker Coach (Vision)", page_icon="♠️")
+# --- 1. 設定 & モデル自動選択 ---
+st.set_page_config(page_title="Gemini Poker Coach (Pro)", page_icon="♠️")
 
 # APIキーの読み込み
 try:
@@ -14,14 +14,32 @@ except FileNotFoundError:
     st.error("APIキーが見つかりません。Secretsを設定してください。")
     st.stop()
 
+def get_best_model_name():
+    """利用可能なモデルから最適なものを自動選択"""
+    try:
+        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        
+        # 優先順位: Flash最新 > Flash通常 > Pro最新 > Pro通常
+        for m in available_models:
+            if "flash" in m and "latest" in m: return m
+        for m in available_models:
+            if "flash" in m and "exp" not in m: return m
+        for m in available_models:
+            if "pro" in m and "latest" in m: return m
+        return "gemini-1.5-flash" # フォールバック
+    except:
+        return "gemini-1.5-flash"
+
 # --- 2. ツール（計算機）の定義 ---
 def calculate_pot_odds(bet_to_call: float, pot_size_before_call: float):
     """
-    ポットオッズを計算する関数。
+    ポットオッズと必要勝率を計算する関数。
+    Args:
+        bet_to_call: コールするのに必要な額
+        pot_size_before_call: コールする前のポット総額（相手のベット込み）
     """
     total_pot = pot_size_before_call + bet_to_call
-    if total_pot == 0:
-        return "Pot size is zero, cannot calculate."
+    if total_pot == 0: return "Error: Pot is zero"
     
     required_equity = (bet_to_call / total_pot) * 100
     odds_ratio = (pot_size_before_call / bet_to_call)
@@ -32,149 +50,112 @@ def calculate_pot_odds(bet_to_call: float, pot_size_before_call: float):
     }
 
 my_tools = [calculate_pot_odds]
+selected_model = get_best_model_name()
+model = genai.GenerativeModel(selected_model, tools=my_tools)
 
-# --- モデルの自動選択ロジック ---
-def get_best_model_name():
-    """
-    現在APIで利用可能なモデル一覧を取得し、
-    Flash系(高速) > Pro系(高性能) の優先順位で自動選択して返す関数
-    """
-    try:
-        # 1. サーバーから使えるモデル一覧を取得
-        available_models = []
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                available_models.append(m.name)
-        
-        # 2. 優先順位に基づいて検索
-        # (models/gemini-1.5-flash のような形式で返ってくるため、部分一致で探す)
-        
-        # 優先度1: Flashの最新版エイリアス (gemini-3.0-flash など)
-        for model in available_models:
-            if "flash" in model and "latest" in model:
-                return model
-        
-        # 優先度2: Flashの通常版 (gemini-3.0-flash, gemini-2.5-flash など)
-        # リストは通常、新しい順や標準的な順で返るため、最初に見つかったFlashを使う
-        for model in available_models:
-            if "flash" in model and "exp" not in model: # 実験版(exp)は避ける
-                return model
-
-        # 優先度3: Proの最新版
-        for model in available_models:
-            if "pro" in model and "latest" in model:
-                return model
-        
-        # 優先度4: Proの通常版
-        for model in available_models:
-            if "pro" in model and "exp" not in model:
-                return model
-
-        # 見つからない場合のフォールバック（決め打ち）
-        return "gemini-3.0-flash"
-
-    except Exception as e:
-        # エラー時は安全なデフォルト値を返す
-        return "gemini-3.0-flash"
-
-# 自動で選ばれたモデル名を取得
-selected_model_name = get_best_model_name()
-
-# Streamlitの画面に、現在使われているモデルを表示（確認用）
-st.caption(f"Running on: `{selected_model_name}`")
-
-# モデルの準備
-model = genai.GenerativeModel(
-    selected_model_name,
-    tools=my_tools
-)
-
-# --- 3. UI部分 ---
+# --- 3. UIデザイン ---
 st.title("♠️ Gemini Poker Coach")
-st.caption("Vision & Tools Enabled")
+st.caption(f"Model: {selected_model} | Mode: Vision & Manual Input")
 
-st.markdown("""
-プレイ画面の**スクリーンショット**をアップロードするか、状況を手入力してください。
-AIが画面を解析し、計算機を使ってアドバイスします。
-""")
+st.markdown("状況を入力してください。画像なしでも詳細に分析します。")
 
-# 画像アップローダー
-uploaded_file = st.file_uploader("スクリーンショットをアップロード (任意)", type=["jpg", "png", "jpeg"])
-
-image_input = None
-if uploaded_file is not None:
-    image_input = Image.open(uploaded_file)
-    st.image(image_input, caption="アップロードされた画像", use_container_width=True)
-    st.info("画像が読み込まれました。フォームの入力は空欄でも構いませんが、補足情報があれば入力してください。")
-
-# 入力フォーム（画像がない場合のバックアップ、または補足用）
-with st.form("hand_input_form"):
-    st.markdown("▼ **補足情報 / 手入力** (画像がある場合は空欄でもOK)")
-    col1, col2 = st.columns(2)
-    with col1:
-        hero_pos = st.selectbox("Hero Position", ["Unknown", "UTG", "MP", "CO", "BTN", "SB", "BB"])
-        hero_hand = st.text_input("Hero Hand", placeholder="例: AhKd (画像なら空欄可)")
-    with col2:
-        villain_pos = st.selectbox("Villain Position", ["Unknown", "UTG", "MP", "CO", "BTN", "SB", "BB"])
-        stack_depth = st.text_input("Stack / Pot", placeholder="例: 100BB (画像なら空欄可)")
-
-    action_history = st.text_area("質問や補足メモ", "この場面、チェックレイズすべき？")
+# --- 入力エリア ---
+with st.form("poker_input_form"):
     
-    submitted = st.form_submit_button("解析開始 (Analyze)")
+    # A. 基本情報
+    st.markdown("### 1. Preflop & Hand")
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        hero_pos = st.selectbox("Hero Position", ["UTG", "MP", "CO", "BTN", "SB", "BB"])
+    with c2:
+        villain_pos = st.selectbox("Villain Position", ["UTG", "MP", "CO", "BTN", "SB", "BB"])
+    with c3:
+        hero_hand = st.text_input("Hero Hand", placeholder="例: AhKd")
+
+    # B. ボード情報（ここを強化）
+    st.markdown("### 2. Board (Community Cards)")
+    st.caption("カードがない場合は空欄でOK（例: フロップだけ入力）")
+    b1, b2, b3 = st.columns(3)
+    with b1:
+        flop_cards = st.text_input("Flop (3 cards)", placeholder="例: 2h 7s Qd")
+    with b2:
+        turn_card = st.text_input("Turn (1 card)", placeholder="例: As")
+    with b3:
+        river_card = st.text_input("River (1 card)", placeholder="例: 5c")
+
+    # C. ベット状況（計算用）
+    st.markdown("### 3. Pot & Action Info")
+    p1, p2, p3 = st.columns(3)
+    with p1:
+        stack_depth = st.text_input("Effective Stack", placeholder="100 BB")
+    with p2:
+        current_pot = st.number_input("Current Pot (相手のベット込)", min_value=0.0, step=0.5, help="現在テーブルに出ているチップの総額")
+    with p3:
+        to_call = st.number_input("To Call (相手のベット額)", min_value=0.0, step=0.5, help="Heroがコールするのに必要な額。0ならチェックorベットの場面")
+
+    # D. その他・画像
+    st.markdown("### 4. Others")
+    action_history = st.text_area("アクション履歴・補足メモ", placeholder="例: Preflop: Hero open 2.5bb, Villain 3bet to 9bb, Hero Call...", height=100)
+    
+    uploaded_file = st.file_uploader("スクリーンショット (任意)", type=["jpg", "png"])
+    image_input = None
+    if uploaded_file:
+        image_input = Image.open(uploaded_file)
+        st.image(image_input, width=300)
+
+    submit_btn = st.form_submit_button("解析開始 (Analyze)")
 
 # --- 4. 解析ロジック ---
-if submitted:
-    with st.spinner("Geminiが視覚情報と状況を解析中..."):
-        # チャットセッション開始
+if submit_btn:
+    with st.spinner("戦況を分析中...（オッズ計算・レンジ推定）"):
         chat = model.start_chat(enable_automatic_function_calling=True)
-        
-        # プロンプトの基本部分
-        base_prompt = f"""
-        あなたはGTOポーカーコーチです。提供された情報を元に最適なアクションをアドバイスしてください。
 
-        【ユーザー入力情報（補足）】
-        - Hero Position: {hero_pos}
-        - Hero Hand: {hero_hand}
-        - Villain Position: {villain_pos}
-        - Stack/Pot Info: {stack_depth}
-        - ユーザーの質問: {action_history}
+        # ボード情報の整理
+        board_info = f"Flop: {flop_cards}"
+        if turn_card: board_info += f", Turn: {turn_card}"
+        if river_card: board_info += f", River: {river_card}"
+
+        # プロンプト作成
+        prompt = f"""
+        あなたは世界最高峰のGTOポーカーコーチです。以下のハンドを分析してください。
+
+        【ハンド情報】
+        - Hero: {hero_pos} / Hand: {hero_hand}
+        - Villain: {villain_pos}
+        - Effective Stack: {stack_depth}
+        
+        【ボード】
+        {board_info}
+
+        【数値情報（計算用）】
+        - Current Pot Size: {current_pot}
+        - Amount to Call: {to_call}
+        
+        【アクション履歴・メモ】
+        {action_history}
+
+        【指示】
+        1. **状況整理:** 提供されたボードテクスチャ（ウェット/ドライなど）と、互いのレンジの絡み具合を分析してください。
+        2. **計算:** `to_call` が0より大きい場合は、必ず `calculate_pot_odds` ツールを使ってオッズを計算してください。
+        3. **推奨アクション:** GTOの観点から推奨アクション（頻度含む）を提示してください。
+           - なぜそのアクションなのか？（バリューターゲット、ブラフレンジなど）
         """
 
-        # 画像がある場合の追加指示
-        if image_input:
-            img_prompt = """
-            【画像分析指示】
-            アップロードされた画像はポーカーのプレイ画面または履歴です。
-            1. **OCRと状況認識:** 画像から読み取れる全ての情報（カード、スタックサイズ、ポット額、現在のベット額、ポジション、HUDのスタッツなど）を抽出してください。
-            2. ユーザーの手入力情報と画像の情報の間に矛盾がある場合は、**画像の情報を優先**してください。
-            3. 画像から「ベット額」や「ポット額」が読み取れる場合は、必ず `calculate_pot_odds` ツールを使って正確なオッズを計算してください。
-            """
-            # 画像とテキストをリストにして送信
-            message_content = [base_prompt + img_prompt, image_input]
-        else:
-            # テキストのみ送信
-            message_content = base_prompt + "\n【指示】状況を分析し、必要であれば計算ツールを使ってアドバイスしてください。"
+        # 画像がある場合の処理分岐
+        content = [prompt, image_input] if image_input else [prompt]
 
         try:
-            # 解析実行
-            response = chat.send_message(message_content)
-            
+            response = chat.send_message(content)
             st.markdown("### 📝 コーチからのフィードバック")
             st.markdown(response.text)
             
-            # デバッグ用：ツール使用ログ
-            with st.expander("思考プロセスとツール使用ログ"):
-                for content in chat.history:
-                    part = content.parts[0]
-                    if fn := part.function_call:
-                        st.write(f"🔧 **ツール実行:** `{fn.name}`")
-                        st.json(dict(fn.args))
-                    if resp := part.function_response:
-                        st.write(f"📩 **ツール結果:** `{resp.name}`")
-
+            # ツール使用ログ
+            with st.expander("AIの思考プロセス（計算ログ）"):
+                for history in chat.history:
+                    if history.role == "model":
+                        for part in history.parts:
+                            if part.function_call:
+                                st.write(f"🔧 計算実行: `{part.function_call.name}`")
+                                st.json(dict(part.function_call.args))
         except Exception as e:
-
             st.error(f"エラーが発生しました: {e}")
-
-
-
