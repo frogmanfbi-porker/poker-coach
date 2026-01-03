@@ -33,10 +33,59 @@ def calculate_pot_odds(bet_to_call: float, pot_size_before_call: float):
 
 my_tools = [calculate_pot_odds]
 
+# --- モデルの自動選択ロジック ---
+def get_best_model_name():
+    """
+    現在APIで利用可能なモデル一覧を取得し、
+    Flash系(高速) > Pro系(高性能) の優先順位で自動選択して返す関数
+    """
+    try:
+        # 1. サーバーから使えるモデル一覧を取得
+        available_models = []
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                available_models.append(m.name)
+        
+        # 2. 優先順位に基づいて検索
+        # (models/gemini-1.5-flash のような形式で返ってくるため、部分一致で探す)
+        
+        # 優先度1: Flashの最新版エイリアス (gemini-1.5-flash など)
+        for model in available_models:
+            if "flash" in model and "latest" in model:
+                return model
+        
+        # 優先度2: Flashの通常版 (gemini-1.5-flash, gemini-2.0-flash など)
+        # リストは通常、新しい順や標準的な順で返るため、最初に見つかったFlashを使う
+        for model in available_models:
+            if "flash" in model and "exp" not in model: # 実験版(exp)は避ける
+                return model
+
+        # 優先度3: Proの最新版
+        for model in available_models:
+            if "pro" in model and "latest" in model:
+                return model
+        
+        # 優先度4: Proの通常版
+        for model in available_models:
+            if "pro" in model and "exp" not in model:
+                return model
+
+        # 見つからない場合のフォールバック（決め打ち）
+        return "gemini-1.5-flash"
+
+    except Exception as e:
+        # エラー時は安全なデフォルト値を返す
+        return "gemini-1.5-flash"
+
+# 自動で選ばれたモデル名を取得
+selected_model_name = get_best_model_name()
+
+# Streamlitの画面に、現在使われているモデルを表示（確認用）
+st.caption(f"Running on: `{selected_model_name}`")
+
 # モデルの準備
-# 画像認識とFunction Callingを両立できる "gemini-1.5-pro" を使用
 model = genai.GenerativeModel(
-"gemini-1.5-flash-latest",
+    selected_model_name,
     tools=my_tools
 )
 
@@ -126,4 +175,5 @@ if submitted:
         except Exception as e:
 
             st.error(f"エラーが発生しました: {e}")
+
 
