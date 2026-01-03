@@ -49,12 +49,12 @@ def get_best_model_name():
         # 2. 優先順位に基づいて検索
         # (models/gemini-1.5-flash のような形式で返ってくるため、部分一致で探す)
         
-        # 優先度1: Flashの最新版エイリアス (gemini-1.5-flash など)
+        # 優先度1: Flashの最新版エイリアス (gemini-3.0-flash など)
         for model in available_models:
             if "flash" in model and "latest" in model:
                 return model
         
-        # 優先度2: Flashの通常版 (gemini-1.5-flash, gemini-2.0-flash など)
+        # 優先度2: Flashの通常版 (gemini-3.0-flash, gemini-2.5-flash など)
         # リストは通常、新しい順や標準的な順で返るため、最初に見つかったFlashを使う
         for model in available_models:
             if "flash" in model and "exp" not in model: # 実験版(exp)は避ける
@@ -71,11 +71,11 @@ def get_best_model_name():
                 return model
 
         # 見つからない場合のフォールバック（決め打ち）
-        return "gemini-1.5-flash"
+        return "gemini-3.0-flash"
 
     except Exception as e:
         # エラー時は安全なデフォルト値を返す
-        return "gemini-1.5-flash"
+        return "gemini-3.0-flash"
 
 # 自動で選ばれたモデル名を取得
 selected_model_name = get_best_model_name()
@@ -175,5 +175,6 @@ if submitted:
         except Exception as e:
 
             st.error(f"エラーが発生しました: {e}")
+
 
 
