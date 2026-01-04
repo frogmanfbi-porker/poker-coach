@@ -175,4 +175,3 @@ if submit_btn:
             st.markdown(response.text)
         except Exception as e:
             st.error(f"エラー: {e}")
-
