@@ -18,16 +18,16 @@ def get_best_model_name():
     """利用可能なモデルから最適なものを自動選択"""
     try:
         available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        # 優先順位: Pro最新 > Flash最新 > Flash通常
-        for m in available_models:
-            if "pro" in m and "latest" in m: return m
+        # 優先順位: Flash最新 > Flash通常 > Pro最新
         for m in available_models:
             if "flash" in m and "latest" in m: return m
         for m in available_models:
             if "flash" in m and "exp" not in m: return m
-        return "gemini-3.0-pro"
+        for m in available_models:
+            if "pro" in m and "latest" in m: return m
+        return "gemini-3.0-flash"
     except:
-        return "gemini-3.0-pro"
+        return "gemini-3.0-flash"
 
 # --- 2. ツール（計算機）の定義 ---
 def calculate_pot_odds(bet_to_call: float, pot_size_before_call: float):
@@ -175,3 +175,4 @@ if submit_btn:
             st.markdown(response.text)
         except Exception as e:
             st.error(f"エラー: {e}")
+
