@@ -25,9 +25,9 @@ def get_best_model_name():
             if "flash" in m and "exp" not in m: return m
         for m in available_models:
             if "pro" in m and "latest" in m: return m
-        return "gemini-1.5-flash"
+        return "gemini-3.0-flash"
     except:
-        return "gemini-1.5-flash"
+        return "gemini-3.0-flash"
 
 # --- 2. ツール（計算機）の定義 ---
 def calculate_pot_odds(bet_to_call: float, pot_size_before_call: float):
@@ -175,3 +175,4 @@ if submit_btn:
             st.markdown(response.text)
         except Exception as e:
             st.error(f"エラー: {e}")
+
